@@ -1,6 +1,8 @@
 package com.seros.pincodeview
 
-import android.annotation.SuppressLint
+import android.content.Context
+import android.content.Intent
+import android.content.SharedPreferences
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.util.Log
@@ -9,99 +11,196 @@ import android.widget.LinearLayout
 import android.widget.Toast
 import com.seros.pincodeview.databinding.ActivityPinCodeBinding
 
-@Suppress("DEPRECATION")
 class PinCodeActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityPinCodeBinding
-    private var currentInputIndex = 0 // Индекс текущего ввода
-    private val pinCode = "1234"
+    private var currentInputIndex = 0
+    private lateinit var pinLayout: LinearLayout
+    private lateinit var sharedPreferences: SharedPreferences
+    private lateinit var pinCode: String
+    private lateinit var confirmPinCode: String
+
+
+    companion object {
+        private const val PIN_LENGTH = 4
+        private const val CIRCLE_SIZE = 60
+        private const val CIRCLE_MARGIN = 24
+        private const val PREFS_NAME = "PinCodePrefs"
+        private const val PIN_KEY = "pin_key"
+        private const val CONFIRM_PIN_KEY = "confirm_pin_key"
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityPinCodeBinding.inflate(layoutInflater)
+        pinLayout = binding.pinLayout
         setContentView(binding.root)
 
-        createEmptyCircles(4)
+        sharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        pinCode = sharedPreferences.getString(PIN_KEY, "") ?: ""
+        confirmPinCode = sharedPreferences.getString(CONFIRM_PIN_KEY, "") ?: ""
 
-        binding.apply {
-            btn1.setOnClickListener {
-                handlePinInput("1")
-            }
-            btn2.setOnClickListener {
-                handlePinInput("2")
-            }
-            btn3.setOnClickListener {
-                handlePinInput("3")
-            }
-            btn4.setOnClickListener {
-                handlePinInput("4")
-            }
-            btn5.setOnClickListener {
-                handlePinInput("5")
-            }
-            btn6.setOnClickListener {
-                handlePinInput("6")
-            }
-            btn7.setOnClickListener {
-                handlePinInput("7")
-            }
-            btn8.setOnClickListener {
-                handlePinInput("8")
-            }
-            btn9.setOnClickListener {
-                handlePinInput("9")
-            }
-            btn0.setOnClickListener {
-                handlePinInput("0")
-            }
-            btnDelete.setOnClickListener {
-                if (currentInputIndex > 0) {
-                    currentInputIndex--
-                    clearCircle(currentInputIndex)
-                }
-            }
-            btnForgotPassword.setOnClickListener {
-                Log.d("PinCode", "Actual Pin: $pinCode")
-            }
-
-            // Добавь обработку для других кнопок аналогичным образом
+        createEmptyCircles(PIN_LENGTH)
+        if (pinCode.isEmpty()) {
+            setupNewPin()
+        } else {
+            setupButtonListeners(binding)
         }
     }
+
+    private fun setupButtonListeners(binding: ActivityPinCodeBinding) {
+        binding.apply {
+            val buttons = arrayOf(btn1, btn2, btn3, btn4, btn5, btn6, btn7, btn8, btn9, btn0)
+            for (button in buttons) {
+                button.setOnClickListener {
+                    handlePinInput(button.text.toString())
+                }
+            }
+
+            btnDelete.setOnClickListener {
+                handleDeleteButton()
+            }
+
+            btnForgotPassword.setOnClickListener {
+                handleForgotPassword()
+            }
+
+            btnLoginFinger.setOnClickListener {
+                setupNewPin()
+                val editor = sharedPreferences.edit()
+                editor.putString(PIN_KEY, "")
+                editor.putString(CONFIRM_PIN_KEY, "")
+            }
+        }
+    }
+
 
     private fun handlePinInput(input: String) {
-        if (currentInputIndex < 4) { // Убедимся, что не введено больше 4 цифр
-            fillCircle(currentInputIndex) // Заполняем кружок, чтобы показать введенную цифру
+        if (currentInputIndex < PIN_LENGTH) {
+            fillCircle(currentInputIndex)
             currentInputIndex++
-            binding.pinLayout.getChildAt(currentInputIndex - 1).tag = input // Устанавливаем введенную цифру в тег кружка
+            pinLayout.getChildAt(currentInputIndex - 1).tag = input
 
-            if (currentInputIndex == 4) {
+            if (currentInputIndex == PIN_LENGTH) {
                 val enteredPin = getEnteredPin()
                 if (enteredPin == pinCode) {
-                    // Пин-код верный, выполните необходимые действия, например, перейдите на следующий экран
-                    // Здесь можно добавить свой код для обработки успешного ввода пин-кода
-                    Toast.makeText(this, "Hello", Toast.LENGTH_SHORT).show()
-                    clearAllCircles() // Очистим кружки после успешной проверки
+                    Toast.makeText(this, "Добро пожаловать", Toast.LENGTH_SHORT).show()
+                    startMainActivity()
+                    clearAllCircles()
                 } else {
-                    // Пин-код неверный, выполните необходимые действия, например, покажите сообщение об ошибке
-                    // Здесь можно добавить свой код для обработки неверного пин-кода
-                    Toast.makeText(this, "Error", Toast.LENGTH_SHORT).show()
-
-                    clearAllCircles() // Очистим кружки после неудачной проверки
+                    Toast.makeText(this, "PIN-код не правильный", Toast.LENGTH_SHORT).show()
+                    clearAllCircles()
                 }
             }
         }
     }
+
+    private fun setupNewPin() {
+        binding.titleTextView.text = "Введите новый PIN-код"
+
+        binding.apply {
+            val buttons = arrayOf(btn1, btn2, btn3, btn4, btn5, btn6, btn7, btn8, btn9, btn0)
+            for (button in buttons) {
+                button.setOnClickListener {
+                    handleNewPinInput(button.text.toString())
+                }
+            }
+        }
+    }
+
+
+    private fun handleNewPinInput(input: String) {
+        if (currentInputIndex < PIN_LENGTH) {
+            fillCircle(currentInputIndex)
+            currentInputIndex++
+            pinLayout.getChildAt(currentInputIndex - 1).tag = input
+
+            if (currentInputIndex == PIN_LENGTH) {
+                pinCode = getEnteredPin()
+                if (pinCode.isNotEmpty()){
+                    saveConfirmPin(pinCode)
+                    confirmNewPin()
+                    clearAllCircles()
+                }
+            }
+        }
+    }
+
+    private fun confirmNewPin() {
+        binding.titleTextView.text = "Подтвердите ваш PIN-код"
+
+        binding.apply {
+            val buttons = arrayOf(btn1, btn2, btn3, btn4, btn5, btn6, btn7, btn8, btn9, btn0)
+            for (button in buttons) {
+                button.setOnClickListener {
+                    handleConfirmPinInput(button.text.toString())
+                }
+            }
+        }
+    }
+
+    private fun handleConfirmPinInput(input: String) {
+        if (currentInputIndex < PIN_LENGTH) {
+            fillCircle(currentInputIndex)
+            currentInputIndex++
+            pinLayout.getChildAt(currentInputIndex - 1).tag = input
+
+            if (currentInputIndex == PIN_LENGTH) {
+                confirmPinCode = getEnteredPin()
+                if (pinCode == confirmPinCode){
+                    Toast.makeText(this, "Добро пожаловать", Toast.LENGTH_SHORT).show()
+                    startMainActivity()
+                    savePin(pinCode)
+                    clearAllCircles()
+                }else {
+                    Toast.makeText(this, "PIN-коды не совпадают, начните сначала", Toast.LENGTH_SHORT).show()
+                    setupNewPin()
+                    clearAllCircles()
+                }
+            }
+        }
+    }
+
+
+    private fun savePin(pin: String) {
+        val editor = sharedPreferences.edit()
+        editor.putString(PIN_KEY, pin)
+        editor.apply()
+    }
+
+    private fun saveConfirmPin(pin: String) {
+        val editor = sharedPreferences.edit()
+        editor.putString(CONFIRM_PIN_KEY, pin)
+        editor.apply()
+    }
+
+    private fun startMainActivity() {
+        startActivity(Intent(this, MainActivity::class.java))
+        finish()
+    }
+
+    private fun handleDeleteButton() {
+        if (currentInputIndex > 0) {
+            currentInputIndex--
+            clearCircle(currentInputIndex)
+        }
+    }
+
+    private fun handleForgotPassword() {
+        pinCode = sharedPreferences.getString(PIN_KEY, "") ?: ""
+        Log.d("PinCode", "Actual Pin: $pinCode")
+    }
+
 
     private fun getEnteredPin(): String {
         val enteredPin = StringBuilder()
-        for (i in 0 until 4) {
-            enteredPin.append(binding.pinLayout.getChildAt(i).tag.toString())
+        for (i in 0 until PIN_LENGTH) {
+            enteredPin.append(pinLayout.getChildAt(i).tag.toString())
         }
         return enteredPin.toString()
     }
 
     private fun clearAllCircles() {
-        val pinLayout = findViewById<LinearLayout>(R.id.pinLayout)
         for (i in 0 until pinLayout.childCount) {
             clearCircle(i)
         }
@@ -109,32 +208,29 @@ class PinCodeActivity : AppCompatActivity() {
     }
 
     private fun createEmptyCircles(count: Int) {
-        val pinLayout = findViewById<LinearLayout>(R.id.pinLayout)
-        pinLayout.removeAllViews() // Убедимся, что не останется предыдущих кружочков
+        pinLayout.removeAllViews()
 
         for (i in 0 until count) {
             val circle = ImageView(this)
             circle.setImageResource(R.drawable.empty_circle)
-            val layoutParams = LinearLayout.LayoutParams(48, 48)
-            layoutParams.setMargins(24, 0, 24, 0) // Расстояние между кружочками
+            val layoutParams = LinearLayout.LayoutParams(CIRCLE_SIZE, CIRCLE_SIZE)
+            layoutParams.setMargins(CIRCLE_MARGIN, 0, CIRCLE_MARGIN, 0)
             circle.layoutParams = layoutParams
             pinLayout.addView(circle)
         }
     }
 
     private fun fillCircle(index: Int) {
-        val pinLayout = findViewById<LinearLayout>(R.id.pinLayout)
         if (index >= 0 && index < pinLayout.childCount) {
             val circle = pinLayout.getChildAt(index) as ImageView
-            circle.setImageResource(R.drawable.filled_circle) // Ресурс для заполненного кружочка
+            circle.setImageResource(R.drawable.filled_circle)
         }
     }
 
     private fun clearCircle(index: Int) {
-        val pinLayout = findViewById<LinearLayout>(R.id.pinLayout)
         if (index >= 0 && index < pinLayout.childCount) {
             val circle = pinLayout.getChildAt(index) as ImageView
-            circle.setImageResource(R.drawable.empty_circle) // Вернуть к пустому кружочку
+            circle.setImageResource(R.drawable.empty_circle)
         }
     }
 }
